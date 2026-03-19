@@ -1,0 +1,120 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+from data_loader import get_books_df
+from cbf import build_embeddings
+from cf import train_cf
+from hybrid import get_recommendations, get_similar_books
+from chatbot import chat
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("[Startup] Loading books CSV ...")
+    df = get_books_df()
+
+    # Build books index for chatbot card matching: {title.lower(): book_dict}
+    app.state.books_index = {
+        str(row["title"]).lower(): {
+            "isbn13": str(row["isbn13"]),
+            "title": str(row.get("title", "")),
+            "authors": str(row.get("authors", "")),
+            "categories": str(row.get("categories", "")),
+            "thumbnail": str(row.get("thumbnail", "")),
+            "average_rating": float(row.get("average_rating", 0)),
+        }
+        for _, row in df.iterrows()
+    }
+
+    print("[Startup] Building CBF embeddings ...")
+    build_embeddings()
+
+    print("[Startup] Training CF model ...")
+    train_cf()
+
+    print("[Startup] Ready.")
+    yield
+
+
+app = FastAPI(title="BookWise Recommendation API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class RecommendRequest(BaseModel):
+    user_id: str
+    top_n: int = 100
+
+
+class SimilarRequest(BaseModel):
+    isbn13: str
+    top_n: int = 12
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage]
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.post("/recommend")
+def recommend(req: RecommendRequest):
+    try:
+        results = get_recommendations(user_id=req.user_id, top_n=req.top_n)
+        return {"books": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/similar")
+def similar(req: SimilarRequest):
+    try:
+        results = get_similar_books(isbn13=req.isbn13, top_n=req.top_n)
+        return {"books": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/chat")
+async def chatbot(req: ChatRequest):
+    try:
+        messages = [{"role": m.role, "content": m.content} for m in req.messages]
+        books_index = app.state.books_index
+        result = await chat(messages, books_index)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/retrain")
+def retrain():
+    try:
+        train_cf()
+        return {"status": "retrained"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
