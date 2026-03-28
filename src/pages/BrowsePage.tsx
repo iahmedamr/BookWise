@@ -6,6 +6,7 @@ import {
   getPopularBooks,
   getGenres,
   loadBooks,
+  searchBooks,
 } from "@/services/bookService";
 import { fetchRecommendations } from "@/services/recommendationService";
 import { Book } from "@/types/book";
@@ -29,15 +30,18 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { ArrowLeft, SlidersHorizontal, Search } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, SlidersHorizontal, Search, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const ITEMS_PER_PAGE = 24;
+const CURRENT_YEAR = new Date().getFullYear();
 
 export default function BrowsePage() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const section = searchParams.get("section") || "popular";
+  const searchQuery = searchParams.get("q") || "";
 
   const [allBooks, setAllBooks] = useState<Book[]>([]);
   const [genres, setGenres] = useState<string[]>([]);
@@ -49,11 +53,16 @@ export default function BrowsePage() {
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [selectedAuthors, setSelectedAuthors] = useState<string[]>([]);
   const [ratingRange, setRatingRange] = useState<[number, number]>([0, 5]);
+  const [yearRange, setYearRange] = useState<[number, number]>([
+    1900,
+    CURRENT_YEAR,
+  ]);
   const [genreSearch, setGenreSearch] = useState("");
   const [authorSearch, setAuthorSearch] = useState("");
 
-  const title =
-    section === "recommended"
+  const title = searchQuery
+    ? `Results for "${searchQuery}"`
+    : section === "recommended"
       ? "Recommended for You"
       : section === "trending"
         ? "Trending Now"
@@ -64,10 +73,13 @@ export default function BrowsePage() {
       setLoading(true);
       let books: Book[] = [];
 
-      if (section === "recommended" && user) {
-        // Use real hybrid recommendation engine (same as DashboardPage)
+      if (searchQuery) {
+        books = await searchBooks(searchQuery, {
+          sortBy: "popularity",
+          sortOrder: "desc",
+        });
+      } else if (section === "recommended" && user) {
         books = await fetchRecommendations(user.id, 100);
-        // If backend unavailable, fall back to popular
         if (books.length === 0) books = await getPopularBooks(200);
       } else if (section === "trending") {
         books = await getTrendingBooks();
@@ -92,7 +104,7 @@ export default function BrowsePage() {
       setLoading(false);
     };
     load();
-  }, [section, user]);
+  }, [section, user, searchQuery]);
 
   const filteredBooks = useMemo(() => {
     let result = [...allBooks];
@@ -116,9 +128,15 @@ export default function BrowsePage() {
         b.average_rating >= ratingRange[0] &&
         b.average_rating <= ratingRange[1],
     );
+    result = result.filter(
+      (b) =>
+        b.published_year >= yearRange[0] && b.published_year <= yearRange[1],
+    );
 
-    // For recommended section keep ML order by default, only re-sort if user picks something
-    if (sortBy !== "popularity" || section !== "recommended") {
+    if (
+      sortBy !== "popularity" ||
+      (section !== "recommended" && !searchQuery)
+    ) {
       result.sort((a, b) => {
         switch (sortBy) {
           case "title_asc":
@@ -141,7 +159,16 @@ export default function BrowsePage() {
     }
 
     return result;
-  }, [allBooks, selectedGenres, selectedAuthors, ratingRange, sortBy, section]);
+  }, [
+    allBooks,
+    selectedGenres,
+    selectedAuthors,
+    ratingRange,
+    yearRange,
+    sortBy,
+    section,
+    searchQuery,
+  ]);
 
   const totalPages = Math.ceil(filteredBooks.length / ITEMS_PER_PAGE);
   const paginatedBooks = filteredBooks.slice(
@@ -151,20 +178,33 @@ export default function BrowsePage() {
 
   useEffect(() => {
     setPage(1);
-  }, [selectedGenres, selectedAuthors, ratingRange, sortBy]);
+  }, [selectedGenres, selectedAuthors, ratingRange, yearRange, sortBy]);
 
-  const toggleGenre = (genre: string) => {
+  const toggleGenre = (genre: string) =>
     setSelectedGenres((prev) =>
       prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre],
     );
-  };
 
-  const toggleAuthor = (author: string) => {
+  const toggleAuthor = (author: string) =>
     setSelectedAuthors((prev) =>
       prev.includes(author)
         ? prev.filter((a) => a !== author)
         : [...prev, author],
     );
+
+  const hasActiveFilters =
+    selectedGenres.length > 0 ||
+    selectedAuthors.length > 0 ||
+    ratingRange[0] > 0 ||
+    ratingRange[1] < 5 ||
+    yearRange[0] > 1900 ||
+    yearRange[1] < CURRENT_YEAR;
+
+  const clearAllFilters = () => {
+    setSelectedGenres([]);
+    setSelectedAuthors([]);
+    setRatingRange([0, 5]);
+    setYearRange([1900, CURRENT_YEAR]);
   };
 
   const filteredGenresList = genres.filter((g) =>
@@ -176,22 +216,51 @@ export default function BrowsePage() {
 
   const FilterSidebar = () => (
     <div className="space-y-6">
+      {/* Rating Range */}
       <div>
-        <h4 className="text-sm font-semibold mb-3">Rating Range</h4>
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-semibold">Rating</h4>
+          <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+            {ratingRange[0]} – {ratingRange[1]} ★
+          </span>
+        </div>
         <Slider
           value={ratingRange}
           onValueChange={(v) => setRatingRange(v as [number, number])}
           min={0}
           max={5}
           step={0.5}
-          className="mb-2"
+          className="mb-1"
         />
-        <div className="flex justify-between text-xs text-muted-foreground">
-          <span>{ratingRange[0]}</span>
-          <span>{ratingRange[1]}</span>
+        <div className="flex justify-between text-xs text-muted-foreground mt-1">
+          <span>0 ★</span>
+          <span>5 ★</span>
         </div>
       </div>
 
+      {/* Published Year Range */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-semibold">Published Year</h4>
+          <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+            {yearRange[0]} – {yearRange[1]}
+          </span>
+        </div>
+        <Slider
+          value={yearRange}
+          onValueChange={(v) => setYearRange(v as [number, number])}
+          min={1900}
+          max={CURRENT_YEAR}
+          step={1}
+          className="mb-1"
+        />
+        <div className="flex justify-between text-xs text-muted-foreground mt-1">
+          <span>1900</span>
+          <span>{CURRENT_YEAR}</span>
+        </div>
+      </div>
+
+      {/* Genres */}
       <div>
         <h4 className="text-sm font-semibold mb-2">Genres</h4>
         <div className="relative mb-2">
@@ -222,6 +291,7 @@ export default function BrowsePage() {
         </ScrollArea>
       </div>
 
+      {/* Authors */}
       <div>
         <h4 className="text-sm font-semibold mb-2">Authors</h4>
         <div className="relative mb-2">
@@ -252,21 +322,14 @@ export default function BrowsePage() {
         </ScrollArea>
       </div>
 
-      {(selectedGenres.length > 0 ||
-        selectedAuthors.length > 0 ||
-        ratingRange[0] > 0 ||
-        ratingRange[1] < 5) && (
+      {hasActiveFilters && (
         <Button
           variant="outline"
           size="sm"
           className="w-full"
-          onClick={() => {
-            setSelectedGenres([]);
-            setSelectedAuthors([]);
-            setRatingRange([0, 5]);
-          }}
+          onClick={clearAllFilters}
         >
-          Clear All Filters
+          <X className="h-3 w-3 mr-1" /> Clear All Filters
         </Button>
       )}
     </div>
@@ -287,8 +350,60 @@ export default function BrowsePage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <h1 className="text-3xl font-bold">{title}</h1>
+        <div>
+          <h1 className="text-3xl font-bold">{title}</h1>
+          {searchQuery && (
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {filteredBooks.length} books found
+            </p>
+          )}
+        </div>
       </div>
+
+      {/* Active filter badges */}
+      {hasActiveFilters && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-xs text-muted-foreground">Active filters:</span>
+          {(ratingRange[0] > 0 || ratingRange[1] < 5) && (
+            <Badge
+              variant="secondary"
+              className="text-xs gap-1 cursor-pointer"
+              onClick={() => setRatingRange([0, 5])}
+            >
+              ★ {ratingRange[0]}–{ratingRange[1]} <X className="h-3 w-3" />
+            </Badge>
+          )}
+          {(yearRange[0] > 1900 || yearRange[1] < CURRENT_YEAR) && (
+            <Badge
+              variant="secondary"
+              className="text-xs gap-1 cursor-pointer"
+              onClick={() => setYearRange([1900, CURRENT_YEAR])}
+            >
+              {yearRange[0]}–{yearRange[1]} <X className="h-3 w-3" />
+            </Badge>
+          )}
+          {selectedGenres.map((g) => (
+            <Badge
+              key={g}
+              variant="secondary"
+              className="text-xs gap-1 cursor-pointer"
+              onClick={() => toggleGenre(g)}
+            >
+              {g} <X className="h-3 w-3" />
+            </Badge>
+          ))}
+          {selectedAuthors.map((a) => (
+            <Badge
+              key={a}
+              variant="secondary"
+              className="text-xs gap-1 cursor-pointer"
+              onClick={() => toggleAuthor(a)}
+            >
+              {a.split(" ").slice(-1)[0]} <X className="h-3 w-3" />
+            </Badge>
+          ))}
+        </div>
+      )}
 
       <div className="flex gap-6">
         <aside className="hidden lg:block w-60 shrink-0">
@@ -306,8 +421,22 @@ export default function BrowsePage() {
             <div className="flex items-center gap-2">
               <Sheet>
                 <SheetTrigger asChild>
-                  <Button variant="outline" size="sm" className="lg:hidden">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="lg:hidden relative"
+                  >
                     <SlidersHorizontal className="h-4 w-4 mr-1" /> Filters
+                    {hasActiveFilters && (
+                      <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground rounded-full w-4 h-4 text-[10px] flex items-center justify-center">
+                        {selectedGenres.length +
+                          selectedAuthors.length +
+                          (ratingRange[0] > 0 || ratingRange[1] < 5 ? 1 : 0) +
+                          (yearRange[0] > 1900 || yearRange[1] < CURRENT_YEAR
+                            ? 1
+                            : 0)}
+                      </span>
+                    )}
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="left">
@@ -337,11 +466,28 @@ export default function BrowsePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
-            {paginatedBooks.map((book) => (
-              <BookCard key={book.isbn13} book={book} />
-            ))}
-          </div>
+          {filteredBooks.length === 0 ? (
+            <div className="text-center py-20 text-muted-foreground">
+              <p className="text-lg font-medium mb-2">No books found</p>
+              <p className="text-sm">Try adjusting your filters.</p>
+              {hasActiveFilters && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={clearAllFilters}
+                >
+                  Clear Filters
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
+              {paginatedBooks.map((book) => (
+                <BookCard key={book.isbn13} book={book} />
+              ))}
+            </div>
+          )}
 
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 py-4">
@@ -349,7 +495,10 @@ export default function BrowsePage() {
                 variant="outline"
                 size="sm"
                 disabled={page === 1}
-                onClick={() => setPage(page - 1)}
+                onClick={() => {
+                  setPage(page - 1);
+                  window.scrollTo(0, 0);
+                }}
               >
                 Previous
               </Button>
@@ -360,7 +509,10 @@ export default function BrowsePage() {
                 variant="outline"
                 size="sm"
                 disabled={page === totalPages}
-                onClick={() => setPage(page + 1)}
+                onClick={() => {
+                  setPage(page + 1);
+                  window.scrollTo(0, 0);
+                }}
               >
                 Next
               </Button>

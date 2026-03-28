@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { searchBooks, getGenres, loadBooks } from "@/services/bookService";
 import { Book, BookFilters } from "@/types/book";
 import BookGrid from "@/components/BookGrid";
+import DualRangeSlider from "@/components/DualRangeSlider";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,9 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, X, Clock, SlidersHorizontal } from "lucide-react";
+import { Search, X, Clock, SlidersHorizontal, RotateCcw } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "react-router-dom";
+
+const RATING_MIN = 0;
+const RATING_MAX = 5;
+const YEAR_MIN = 1900;
+const YEAR_MAX = new Date().getFullYear();
 
 export default function SearchPage() {
   const { user } = useAuth();
@@ -27,6 +33,34 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState<BookFilters>({});
   const [searched, setSearched] = useState(false);
+
+  // Slider local state (independent of filters object)
+  const [ratingRange, setRatingRange] = useState<[number, number]>([RATING_MIN, RATING_MAX]);
+  const [yearRange, setYearRange] = useState<[number, number]>([YEAR_MIN, YEAR_MAX]);
+
+  const applyRatingRange = (range: [number, number]) => {
+    setRatingRange(range);
+    setFilters((f) => ({
+      ...f,
+      minRating: range[0] === RATING_MIN ? undefined : range[0],
+      maxRating: range[1] === RATING_MAX ? undefined : range[1],
+    }));
+  };
+
+  const applyYearRange = (range: [number, number]) => {
+    setYearRange(range);
+    setFilters((f) => ({
+      ...f,
+      minYear: range[0] === YEAR_MIN ? undefined : range[0],
+      maxYear: range[1] === YEAR_MAX ? undefined : range[1],
+    }));
+  };
+
+  const resetFilters = () => {
+    setFilters({});
+    setRatingRange([RATING_MIN, RATING_MAX]);
+    setYearRange([YEAR_MIN, YEAR_MAX]);
+  };
 
   // Autocomplete
   const [suggestions, setSuggestions] = useState<Book[]>([]);
@@ -232,95 +266,115 @@ export default function SearchPage() {
 
       {showFilters && (
         <Card>
-          <CardContent className="pt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                Genre
-              </label>
-              <Select
-                value={filters.genre || ""}
-                onValueChange={(v) =>
-                  setFilters({ ...filters, genre: v || undefined })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All genres" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All genres</SelectItem>
-                  {genres.map((g) => (
-                    <SelectItem key={g} value={g}>
-                      {g}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <CardContent className="pt-5 pb-4 space-y-5">
+            {/* Row 1: Genre + Sort + Order */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  Genre
+                </label>
+                <Select
+                  value={filters.genre || ""}
+                  onValueChange={(v) =>
+                    setFilters({ ...filters, genre: v === "all" ? undefined : v || undefined })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All genres" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All genres</SelectItem>
+                    {genres.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  Sort by
+                </label>
+                <Select
+                  value={filters.sortBy || "popularity"}
+                  onValueChange={(v: any) =>
+                    setFilters({ ...filters, sortBy: v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="popularity">Popularity</SelectItem>
+                    <SelectItem value="rating">Rating</SelectItem>
+                    <SelectItem value="title">Title</SelectItem>
+                    <SelectItem value="year">Year</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  Order
+                </label>
+                <Select
+                  value={filters.sortOrder || "desc"}
+                  onValueChange={(v: any) =>
+                    setFilters({ ...filters, sortOrder: v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="desc">Descending</SelectItem>
+                    <SelectItem value="asc">Ascending</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                Sort by
-              </label>
-              <Select
-                value={filters.sortBy || "popularity"}
-                onValueChange={(v: any) =>
-                  setFilters({ ...filters, sortBy: v })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="popularity">Popularity</SelectItem>
-                  <SelectItem value="rating">Rating</SelectItem>
-                  <SelectItem value="title">Title</SelectItem>
-                  <SelectItem value="year">Year</SelectItem>
-                </SelectContent>
-              </Select>
+
+            {/* Row 2: Rating range + Year range */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-1">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-3 block">
+                  Rating Range
+                </label>
+                <DualRangeSlider
+                  min={RATING_MIN}
+                  max={RATING_MAX}
+                  step={0.5}
+                  value={ratingRange}
+                  onChange={applyRatingRange}
+                  formatLabel={(v) => v.toFixed(1) + " ★"}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-3 block">
+                  Published Year Range
+                </label>
+                <DualRangeSlider
+                  min={YEAR_MIN}
+                  max={YEAR_MAX}
+                  step={1}
+                  value={yearRange}
+                  onChange={applyYearRange}
+                  formatLabel={(v) => String(v)}
+                />
+              </div>
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                Min Rating
-              </label>
-              <Select
-                value={String(filters.minRating || "")}
-                onValueChange={(v) =>
-                  setFilters({
-                    ...filters,
-                    minRating: v ? Number(v) : undefined,
-                  })
-                }
+
+            {/* Reset */}
+            <div className="flex justify-end pt-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground gap-1.5"
+                onClick={resetFilters}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Any" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any</SelectItem>
-                  {[3, 3.5, 4, 4.5].map((r) => (
-                    <SelectItem key={r} value={String(r)}>
-                      ≥ {r}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                Order
-              </label>
-              <Select
-                value={filters.sortOrder || "desc"}
-                onValueChange={(v: any) =>
-                  setFilters({ ...filters, sortOrder: v })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="desc">Descending</SelectItem>
-                  <SelectItem value="asc">Ascending</SelectItem>
-                </SelectContent>
-              </Select>
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset filters
+              </Button>
             </div>
           </CardContent>
         </Card>

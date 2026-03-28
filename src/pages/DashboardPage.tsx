@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { getTopRatedBooks, getMostRatedBooks } from "@/services/bookService";
@@ -18,9 +18,19 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [recLoading, setRecLoading] = useState(false);
 
+  // Track whether we've already fetched for the current user to avoid
+  // re-fetching on tab visibility changes or unrelated re-renders.
+  const fetchedForUser = useRef<string | null>(null);
+  const staticDataLoaded = useRef(false);
+
   useEffect(() => {
+    // Only re-run when the user identity actually changes (login/logout).
+    const userId = user?.id ?? null;
+    if (fetchedForUser.current === userId && staticDataLoaded.current) return;
+
+    fetchedForUser.current = userId;
+
     const load = async () => {
-      // Check onboarding for logged-in users
       if (user) {
         const { data: profile } = await supabase
           .from("profiles")
@@ -33,26 +43,31 @@ export default function DashboardPage() {
           return;
         }
 
-        // Fetch hybrid recommendations in parallel with other sections
-        setRecLoading(true);
-        fetchRecommendations(user.id, 100).then((rec) => {
-          setRecommended(rec);
-          setRecLoading(false);
-        });
+        if (recommended.length === 0) {
+          setRecLoading(true);
+          fetchRecommendations(user.id, 100).then((rec) => {
+            setRecommended(rec);
+            setRecLoading(false);
+          });
+        }
       }
 
-      const [top, most] = await Promise.all([
-        getTopRatedBooks(4, 20),
-        getMostRatedBooks(20),
-      ]);
+      if (!staticDataLoaded.current) {
+        const [top, most] = await Promise.all([
+          getTopRatedBooks(4, 20),
+          getMostRatedBooks(20),
+        ]);
+        setTopRated(top);
+        setMostRated(most);
+        staticDataLoaded.current = true;
+      }
 
-      setTopRated(top);
-      setMostRated(most);
       setLoading(false);
     };
 
     load();
-  }, [user, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   if (loading) {
     return (

@@ -27,6 +27,10 @@ dist-ssr
 backend/data/old_books.csv
 oldREADME.md
 supabase/config.toml
+bookrec_use_case_diagram.svg
+supabase/migrations/supabase-schema-qjkhzrzmjqkwtlaiyktf.png
+supabase/migrations/ERD.png
+supabase/migrations/.erd
 
 # ===========================
 # Secrets & Environment Files

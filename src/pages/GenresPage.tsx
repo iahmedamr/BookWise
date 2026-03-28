@@ -1,21 +1,21 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { getGenres, searchBooks } from '@/services/bookService';
-import { Book } from '@/types/book';
-import BookGrid from '@/components/BookGrid';
-import GenreTag from '@/components/GenreTag';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Input } from '@/components/ui/input';
-import { Search } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
+import { getGenres, searchBooks } from "@/services/bookService";
+import { Book } from "@/types/book";
+import BookGrid from "@/components/BookGrid";
+import GenreTag from "@/components/GenreTag";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
+import { Search } from "lucide-react";
 
 export default function GenresPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedGenres, setSelectedGenres] = useState<string[]>(() => {
-    const g = searchParams.get('genre');
-    return g ? g.split(',').filter(Boolean) : [];
+    const g = searchParams.get("genre");
+    return g ? g.split(",").filter(Boolean) : [];
   });
   const [genres, setGenres] = useState<string[]>([]);
-  const [genreSearch, setGenreSearch] = useState('');
+  const [genreSearch, setGenreSearch] = useState("");
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -23,26 +23,34 @@ export default function GenresPage() {
     getGenres().then(setGenres);
   }, []);
 
-  const toggleGenre = useCallback((genre: string) => {
-    setSelectedGenres((prev) => {
-      const next = prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre];
-      setSearchParams(next.length > 0 ? { genre: next.join(',') } : {});
-      return next;
-    });
-  }, [setSearchParams]);
+  const toggleGenre = useCallback(
+    (genre: string) => {
+      setSelectedGenres((prev) => {
+        const next = prev.includes(genre)
+          ? prev.filter((g) => g !== genre)
+          : [...prev, genre];
+        setSearchParams(next.length > 0 ? { genre: next.join(",") } : {});
+        return next;
+      });
+    },
+    [setSearchParams],
+  );
 
   useEffect(() => {
     if (selectedGenres.length > 0) {
       setLoading(true);
       // Search books matching ANY of the selected genres
-      searchBooks('', { sortBy: 'rating', sortOrder: 'desc' })
-        .then((allBooks) => {
+      searchBooks("", { sortBy: "rating", sortOrder: "desc" }).then(
+        (allBooks) => {
           const filtered = allBooks.filter((b) =>
-            selectedGenres.some((g) => b.categories.toLowerCase().includes(g.toLowerCase()))
+            selectedGenres.some((g) =>
+              b.categories.toLowerCase().includes(g.toLowerCase()),
+            ),
           );
           setBooks(filtered.slice(0, 30));
           setLoading(false);
-        });
+        },
+      );
     } else {
       setBooks([]);
     }
@@ -50,7 +58,9 @@ export default function GenresPage() {
 
   const filteredGenres = useMemo(() => {
     if (!genreSearch.trim()) return genres;
-    return genres.filter((g) => g.toLowerCase().includes(genreSearch.toLowerCase()));
+    return genres.filter((g) =>
+      g.toLowerCase().includes(genreSearch.toLowerCase()),
+    );
   }, [genres, genreSearch]);
 
   return (
@@ -58,7 +68,11 @@ export default function GenresPage() {
       <div>
         <h1 className="text-3xl font-bold">Browse by Genre</h1>
         <p className="text-muted-foreground mt-1">
-          Explore books by category • {selectedGenres.length > 0 ? `${selectedGenres.length} selected • ` : ''}{genres.length} genres available
+          Explore books by category •{" "}
+          {selectedGenres.length > 0
+            ? `${selectedGenres.length} selected • `
+            : ""}
+          {genres.length} genres available
         </p>
       </div>
 
@@ -92,12 +106,20 @@ export default function GenresPage() {
         </div>
       ) : selectedGenres.length > 0 ? (
         books.length > 0 ? (
-          <BookGrid books={books} title={`Top books in ${selectedGenres.join(', ')}`} />
+          <BookGrid
+            books={
+              books
+            } /*title={`Top books in ${selectedGenres.join(', ')}`}*/
+          />
         ) : (
-          <p className="text-center text-muted-foreground py-8">No books found in selected genres.</p>
+          <p className="text-center text-muted-foreground py-8">
+            No books found in selected genres.
+          </p>
         )
       ) : (
-        <p className="text-center text-muted-foreground py-8">Select one or more genres to see books.</p>
+        <p className="text-center text-muted-foreground py-8">
+          Select one or more genres to see books.
+        </p>
       )}
     </div>
   );
