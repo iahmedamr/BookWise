@@ -31,6 +31,11 @@ bookrec_use_case_diagram.svg
 supabase/migrations/supabase-schema-qjkhzrzmjqkwtlaiyktf.png
 supabase/migrations/ERD.png
 supabase/migrations/.erd
+backend/cache
+class_diagram.png
+sequence_diagram.png
+summarized_sequence_diagram.png
+use_case_diagram.png
 
 # ===========================
 # Secrets & Environment Files

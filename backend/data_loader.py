@@ -1,9 +1,15 @@
 import os
+from pathlib import Path
+
 import pandas as pd
 from supabase import create_client
 from dotenv import load_dotenv
 
-load_dotenv()
+BACKEND_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BACKEND_DIR.parent
+
+load_dotenv(BACKEND_DIR / ".env")
+load_dotenv(PROJECT_ROOT / ".env")
 
 _supabase = None
 _books_df = None
@@ -24,7 +30,7 @@ def get_books_df() -> pd.DataFrame:
     if _books_df is not None:
         return _books_df
 
-    csv_path = os.getenv("CSV_PATH", "data/cleaned_books.csv")
+    csv_path = _resolve_csv_path()
     df = pd.read_csv(csv_path, dtype={"isbn13": str, "isbn10": str})
 
     # Normalize column names
@@ -37,9 +43,45 @@ def get_books_df() -> pd.DataFrame:
 
     # Ensure isbn13 is string with no decimals (e.g. "9780..." not "9780...0")
     df["isbn13"] = df["isbn13"].astype(str).str.strip().str.split(".").str[0]
+    df.attrs["csv_path"] = str(csv_path)
 
     _books_df = df
     return _books_df
+
+
+def _resolve_csv_path() -> Path:
+    env_path = os.getenv("CSV_PATH")
+    candidates: list[Path] = []
+
+    if env_path:
+        raw_path = Path(env_path)
+        if raw_path.is_absolute():
+            candidates.append(raw_path)
+        else:
+            candidates.extend(
+                [
+                    Path.cwd() / raw_path,
+                    BACKEND_DIR / raw_path,
+                    PROJECT_ROOT / raw_path,
+                ]
+            )
+    else:
+        candidates.extend(
+            [
+                BACKEND_DIR / "data" / "cleaned_books.csv",
+                PROJECT_ROOT / "public" / "data" / "cleaned_books.csv",
+                PROJECT_ROOT / "data" / "cleaned_books.csv",
+            ]
+        )
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    raise FileNotFoundError(
+        "Could not find cleaned_books.csv. Checked: "
+        + ", ".join(str(candidate) for candidate in candidates)
+    )
 
 
 def get_all_ratings() -> pd.DataFrame:

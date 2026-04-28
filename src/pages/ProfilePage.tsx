@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { getBookByIsbn, searchBooks, getGenres, loadBooks } from '@/services/bookService';
+import { getBookByIsbn, searchBooks, getPopularGenres, loadBooks } from '@/services/bookService';
 import { Book } from '@/types/book';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -171,7 +171,7 @@ export default function ProfilePage() {
       // Friends (own profile)
       if (isOwnProfile && user) {
         await loadFriends();
-        const genres = await getGenres();
+        const genres = await getPopularGenres();
         setAllGenres(genres);
         const { data: prefs } = await supabase.from('user_preferences').select('genre').eq('user_id', user.id);
         const prefGenres = (prefs || []).map((p) => p.genre);

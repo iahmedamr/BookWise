@@ -1,13 +1,6 @@
-import numpy as np
 from data_loader import get_books_df, get_user_signals
 from cbf import cbf_scores_for_user, cbf_similar_books
-from cf import cf_scores_for_user, normalize_cf_scores, train_cf
-
-# Blending weights
-# CF weight is lower because ratings are sparse for a new app.
-# Adjust these as your ratings data grows.
-CF_WEIGHT = 0.35
-CBF_WEIGHT = 0.65
+from cf import cf_scores_for_user, normalize_cf_scores
 
 
 def _normalize(scores: dict[str, float]) -> dict[str, float]:
@@ -19,6 +12,37 @@ def _normalize(scores: dict[str, float]) -> dict[str, float]:
     if mx == mn:
         return {k: 0.5 for k in scores}
     return {k: (v - mn) / (mx - mn) for k, v in scores.items()}
+
+
+def _adaptive_weights(signals: dict, has_cf: bool) -> tuple[float, float]:
+    """
+    Adapt blending weights to the richness of each user's data.
+
+    - Cold start / sparse-rating users lean heavily on CBF.
+    - Users with richer rating history get progressively more CF influence.
+    """
+    if not has_cf:
+        return 0.0, 1.0
+
+    rated_count = len(signals["rated"])
+    favourite_count = len(signals["favourite_isbns"])
+    genre_count = len(signals["genres"])
+
+    cf_signal = min(1.0, rated_count / 15.0)
+    content_signal = min(1.0, (rated_count + favourite_count * 2 + genre_count) / 12.0)
+
+    if rated_count <= 2:
+        cf_signal *= 0.35
+    elif rated_count <= 5:
+        cf_signal *= 0.6
+    elif rated_count <= 10:
+        cf_signal *= 0.85
+
+    cf_weight = max(0.1, cf_signal)
+    cbf_weight = max(0.25, content_signal)
+
+    total = cf_weight + cbf_weight
+    return cf_weight / total, cbf_weight / total
 
 
 def get_recommendations(user_id: str, top_n: int = 100) -> list[dict]:
@@ -55,17 +79,16 @@ def get_recommendations(user_id: str, top_n: int = 100) -> list[dict]:
     cf_raw = cf_scores_for_user(user_id, candidates)
     cf_norm = _normalize(normalize_cf_scores(cf_raw))
 
-    # --- Blend ---
     has_cf = bool(cf_norm)
+    cf_weight, cbf_weight = _adaptive_weights(signals, has_cf)
 
     final_scores: dict[str, float] = {}
     for isbn in candidates:
         cbf_s = cbf_norm.get(isbn, 0.0)
         if has_cf:
             cf_s = cf_norm.get(isbn, 0.0)
-            score = CF_WEIGHT * cf_s + CBF_WEIGHT * cbf_s
+            score = cf_weight * cf_s + cbf_weight * cbf_s
         else:
-            # Pure CBF when no CF model available
             score = cbf_s
         final_scores[isbn] = score
 

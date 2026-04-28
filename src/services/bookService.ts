@@ -1,4 +1,5 @@
 import { Book, BookFilters } from "@/types/book";
+import { filterPopularGenres } from "@/lib/popularGenres";
 
 let booksCache: Book[] | null = null;
 
@@ -130,6 +131,11 @@ export async function getGenres(): Promise<string[]> {
     }
   });
   return Array.from(genres).sort();
+}
+
+export async function getPopularGenres(): Promise<string[]> {
+  const genres = await getGenres();
+  return filterPopularGenres(genres);
 }
 
 export async function getTopRatedBooks(

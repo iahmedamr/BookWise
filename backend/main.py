@@ -12,6 +12,7 @@ from cbf import build_embeddings
 from cf import train_cf
 from hybrid import get_recommendations, get_similar_books
 from chatbot import chat
+from vector_store import sync_book_embeddings
 
 
 @asynccontextmanager
@@ -27,6 +28,7 @@ async def lifespan(app: FastAPI):
             "authors": str(row.get("authors", "")),
             "categories": str(row.get("categories", "")),
             "thumbnail": str(row.get("thumbnail", "")),
+            "description": str(row.get("description", ""))[:700],
             "average_rating": float(row.get("average_rating", 0)),
         }
         for _, row in df.iterrows()
@@ -77,6 +79,12 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage]
 
 
+class SyncEmbeddingsRequest(BaseModel):
+    limit: int | None = None
+    batch_size: int = 250
+    force_rebuild_local: bool = False
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -116,5 +124,17 @@ def retrain():
     try:
         train_cf()
         return {"status": "retrained"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/sync-book-embeddings")
+def sync_embeddings(req: SyncEmbeddingsRequest):
+    try:
+        return sync_book_embeddings(
+            limit=req.limit,
+            batch_size=req.batch_size,
+            force_rebuild_local=req.force_rebuild_local,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

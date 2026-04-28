@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { getGenres, loadBooks } from "@/services/bookService";
+import { getPopularGenres, loadBooks } from "@/services/bookService";
 import { Book } from "@/types/book";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,7 +30,7 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    getGenres().then(setAllGenres);
+    getPopularGenres().then(setAllGenres);
     loadBooks().then(setAllBooks);
   }, []);
 
