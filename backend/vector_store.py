@@ -1,19 +1,109 @@
 from typing import Optional
+import re
+
+import numpy as np
 
 from data_loader import get_books_df, get_supabase
 from embedding_store import EMBEDDING_DIM, encode_text, get_book_embedding_bundle
 
 SUPABASE_BOOK_EMBEDDINGS_TABLE = "book_embeddings"
 SUPABASE_BOOK_MATCH_RPC = "match_book_embeddings"
+QUERY_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "any",
+    "book",
+    "books",
+    "find",
+    "for",
+    "give",
+    "i",
+    "like",
+    "me",
+    "please",
+    "recommend",
+    "show",
+    "something",
+    "suggest",
+    "the",
+    "want",
+}
 
 
 def _vector_literal(values) -> str:
     return "[" + ",".join(f"{float(value):.8f}" for value in values) + "]"
 
 
+def _query_tokens(query: str) -> list[str]:
+    tokens = re.sub(r"[^a-z0-9]+", " ", str(query).lower()).split()
+    return [token for token in tokens if len(token) > 1 and token not in QUERY_STOPWORDS]
+
+
+def clean_search_query(query: str) -> str:
+    tokens = _query_tokens(query)
+    return " ".join(tokens) or str(query).strip()
+
+
+def _catalog_centroid_embedding(query: str) -> Optional[np.ndarray]:
+    tokens = _query_tokens(query)
+    if not tokens:
+        return None
+
+    embeddings, isbn_index = get_book_embedding_bundle()
+    df = get_books_df()
+
+    weighted_vectors = []
+    weights = []
+
+    for _, row in df.iterrows():
+        title_tokens = set(_query_tokens(row.get("title", "")))
+        author_tokens = set(_query_tokens(row.get("authors", "")))
+        category_tokens = set(_query_tokens(row.get("categories", "")))
+        description_tokens = set(_query_tokens(row.get("description", "")))
+
+        score = 0.0
+        for token in tokens:
+            if token in category_tokens:
+                score += 6.0
+            if token in title_tokens:
+                score += 4.0
+            if token in author_tokens:
+                score += 3.0
+            if token in description_tokens:
+                score += 1.0
+
+        if score <= 0:
+            continue
+
+        isbn13 = str(row.get("isbn13", ""))
+        if isbn13 not in isbn_index:
+            continue
+
+        weighted_vectors.append(embeddings[isbn_index[isbn13]] * score)
+        weights.append(score)
+
+    if not weighted_vectors:
+        return None
+
+    centroid = np.sum(weighted_vectors, axis=0) / float(sum(weights))
+    norm = np.linalg.norm(centroid)
+    if norm > 0:
+        centroid = centroid / norm
+    return centroid
+
+
 def search_books_by_query(query: str, top_n: int = 8) -> list[dict]:
     client = get_supabase()
-    query_embedding = encode_text(query)
+    cleaned_query = clean_search_query(query)
+
+    try:
+        query_embedding = encode_text(cleaned_query)
+    except Exception as exc:
+        print(f"[Vector Store] Text embedding failed; using catalog centroid for query='{cleaned_query}'. {exc}")
+        query_embedding = _catalog_centroid_embedding(cleaned_query)
+        if query_embedding is None:
+            raise
 
     response = client.rpc(
         SUPABASE_BOOK_MATCH_RPC,

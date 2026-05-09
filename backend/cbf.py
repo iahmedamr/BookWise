@@ -3,6 +3,7 @@ from typing import Optional
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
+from data_loader import get_books_df
 from embedding_store import encode_text, get_book_embedding_bundle
 
 _embeddings: Optional[np.ndarray] = None
@@ -21,6 +22,32 @@ def get_embeddings():
     return _embeddings, _isbn_index
 
 
+def _genre_centroid_from_catalog(preferred_genres: list, embeddings: np.ndarray, isbn_index: dict[str, int]) -> Optional[np.ndarray]:
+    wanted = {str(genre).strip().lower() for genre in preferred_genres if str(genre).strip()}
+    if not wanted:
+        return None
+
+    df = get_books_df()
+    matched_vectors = []
+    for _, row in df.iterrows():
+        categories = {
+            category.strip().lower()
+            for category in str(row.get("categories", "")).split(",")
+            if category.strip()
+        }
+        if not categories & wanted:
+            continue
+
+        isbn = str(row.get("isbn13", ""))
+        if isbn in isbn_index:
+            matched_vectors.append(embeddings[isbn_index[isbn]])
+
+    if not matched_vectors:
+        return None
+
+    return np.mean(matched_vectors, axis=0)
+
+
 def cbf_scores_for_user(favourite_isbns: list, preferred_genres: list, candidate_isbns: list) -> dict:
     embeddings, isbn_index = get_embeddings()
     seed_vectors = []
@@ -31,8 +58,13 @@ def cbf_scores_for_user(favourite_isbns: list, preferred_genres: list, candidate
 
     if preferred_genres:
         genre_text = "Genres: " + " ".join(preferred_genres)
-        genre_vec = encode_text(genre_text)
-        seed_vectors.append(genre_vec * 0.75)
+        try:
+            genre_vec = encode_text(genre_text)
+        except Exception as exc:
+            print(f"[CBF] Torch text encoding failed for genres; using catalog centroid fallback. {exc}")
+            genre_vec = _genre_centroid_from_catalog(preferred_genres, embeddings, isbn_index)
+        if genre_vec is not None:
+            seed_vectors.append(genre_vec * 0.75)
 
     if not seed_vectors:
         return {isbn: 0.0 for isbn in candidate_isbns}

@@ -9,8 +9,7 @@ from pydantic import BaseModel
 
 from data_loader import get_books_df
 from cbf import build_embeddings
-from cf import train_cf
-from hybrid import get_recommendations, get_similar_books
+from hybrid import get_recommendations, get_similar_books, train_hybrid
 from chatbot import chat
 from vector_store import sync_book_embeddings
 
@@ -20,7 +19,6 @@ async def lifespan(app: FastAPI):
     print("[Startup] Loading books CSV ...")
     df = get_books_df()
 
-    # Build books index for chatbot card matching: {title.lower(): book_dict}
     app.state.books_index = {
         str(row["title"]).lower(): {
             "isbn13": str(row["isbn13"]),
@@ -37,8 +35,8 @@ async def lifespan(app: FastAPI):
     print("[Startup] Building CBF embeddings ...")
     build_embeddings()
 
-    print("[Startup] Training CF model ...")
-    train_cf()
+    print("[Startup] Training hybrid model (CF + blend regressor) ...")
+    train_hybrid()   # handles both ALS-CF and weight learning in one call
 
     print("[Startup] Ready.")
     yield
@@ -112,8 +110,7 @@ def similar(req: SimilarRequest):
 async def chatbot(req: ChatRequest):
     try:
         messages = [{"role": m.role, "content": m.content} for m in req.messages]
-        books_index = app.state.books_index
-        result = await chat(messages, books_index)
+        result = await chat(messages, app.state.books_index)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -122,7 +119,7 @@ async def chatbot(req: ChatRequest):
 @app.post("/retrain")
 def retrain():
     try:
-        train_cf()
+        train_hybrid()
         return {"status": "retrained"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

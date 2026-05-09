@@ -1,13 +1,15 @@
 import hashlib
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-from sentence_transformers import SentenceTransformer
 
 from data_loader import get_books_df
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384
@@ -18,12 +20,14 @@ CACHE_DIR = BACKEND_DIR / "cache"
 CACHE_FILE = CACHE_DIR / "book_embeddings_minilm.npz"
 METADATA_FILE = CACHE_DIR / "book_embeddings_minilm_meta.json"
 
-_model: Optional[SentenceTransformer] = None
+_model: Optional["SentenceTransformer"] = None
 
 
-def get_model() -> SentenceTransformer:
+def get_model() -> "SentenceTransformer":
     global _model
     if _model is None:
+        from sentence_transformers import SentenceTransformer
+
         print(f"[Embedding Store] Loading {MODEL_NAME} ...")
         _model = SentenceTransformer(MODEL_NAME)
         print("[Embedding Store] Model loaded.")
