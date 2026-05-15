@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate, Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 
-export default function DashboardPage() {
+export default function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [recommended, setRecommended] = useState<Book[]>([]);

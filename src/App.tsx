@@ -12,7 +12,7 @@ import RegisterPage from "@/pages/RegisterPage";
 import ForgotPasswordPage from "@/pages/ForgotPasswordPage";
 import ResetPasswordPage from "@/pages/ResetPasswordPage";
 import OnboardingPage from "@/pages/OnboardingPage";
-import DashboardPage from "@/pages/DashboardPage";
+import HomePage from "@/pages/HomePage";
 import BookDetailPage from "@/pages/BookDetailPage";
 import MyBooksPage from "@/pages/MyBooksPage";
 import GenresPage from "@/pages/GenresPage";
@@ -58,7 +58,7 @@ const App = () => (
                   </OptionalAuthRoute>
                 }
               >
-                <Route path="/" element={<DashboardPage />} />
+                <Route path="/" element={<HomePage />} />
                 <Route path="/genres" element={<GenresPage />} />
                 <Route path="/browse" element={<BrowsePage />} />
               </Route>
